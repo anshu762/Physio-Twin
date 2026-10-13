@@ -1,14 +1,48 @@
 from __future__ import annotations
 
+import os
+
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from backend.config import DATABASE_DIR
 
 
-DATABASE_URL = (
-    f"sqlite:///{DATABASE_DIR / 'physio_twin.db'}"
-)
+# -----------------------------------------------------------------------------
+# DATABASE_URL
+# -----------------------------------------------------------------------------
+# If the DATABASE_URL environment variable is set (e.g. your Neon Postgres
+# connection string), it is used — with the driver explicitly forced to
+# psycopg2 (since that's the driver installed via requirements.txt).
+#
+# If it is NOT set, the app falls back to the original local SQLite file —
+# local development behavior is completely unchanged.
+# -----------------------------------------------------------------------------
+
+_env_database_url = os.getenv("DATABASE_URL")
+
+if _env_database_url:
+    DATABASE_URL = _env_database_url
+
+    # Force the psycopg2 driver explicitly, regardless of how the
+    # connection string was provided (e.g. by Neon, Render, etc.)
+    if DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace(
+            "postgresql://", "postgresql+psycopg2://", 1
+        )
+    elif DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace(
+            "postgres://", "postgresql+psycopg2://", 1
+        )
+
+    _connect_args: dict = {}
+else:
+    DATABASE_URL = (
+        f"sqlite:///{DATABASE_DIR / 'physio_twin.db'}"
+    )
+    _connect_args = {
+        "check_same_thread": False,
+    }
 
 
 class Base(DeclarativeBase):
@@ -17,9 +51,8 @@ class Base(DeclarativeBase):
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={
-        "check_same_thread": False,
-    },
+    connect_args=_connect_args,
+    pool_pre_ping=True,
 )
 
 
